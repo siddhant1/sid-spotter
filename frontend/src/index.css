@@ -1,0 +1,50 @@
+:root {
+  --ink: #18212b;
+  --ink-2: #3c4752;
+  --muted: #6b7680;
+  --line: #e2e0da;
+  --panel: #fbfaf7;
+  --surface: #ffffff;
+  --accent: #17324d;
+  --accent-soft: #e6edf4;
+  --bad: #c0262f;
+  --radius: 10px;
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--panel);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+}
