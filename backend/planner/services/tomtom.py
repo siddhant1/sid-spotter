@@ -10,6 +10,7 @@ car-to-truck speed adjustment.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -147,6 +148,7 @@ def road_summary(route: dict, path: TimedPath, top: int = 3) -> str:
         length = path.cum_mi[b] - path.cum_mi[a]
         for rn in sec.get("roadNumbers", []):
             name = rn.get("text") if isinstance(rn, dict) else str(rn)
+            name = re.sub(r"\s+[NSEW]B?$", "", name or "")  # "I-80 W" -> "I-80"
             if name:
                 miles[name] = miles.get(name, 0.0) + length
                 first.setdefault(name, a)

@@ -20,7 +20,7 @@ ROUTE = {
         {"pointIndex": 3, "travelTimeInSeconds": 12000, "distanceInMeters": 222000},
     ],
     "sections": [
-        {"sectionType": "IMPORTANT_ROAD_STRETCH", "startPointIndex": 0, "endPointIndex": 2, "roadNumbers": [{"text": "I-39"}]},
+        {"sectionType": "IMPORTANT_ROAD_STRETCH", "startPointIndex": 0, "endPointIndex": 2, "roadNumbers": [{"text": "I-39 N"}]},
         {"sectionType": "IMPORTANT_ROAD_STRETCH", "startPointIndex": 2, "endPointIndex": 3, "roadNumbers": [{"text": "US-51"}, {"text": "I-39"}]},
         {"sectionType": "TRAVEL_MODE", "startPointIndex": 0, "endPointIndex": 3},
     ],
