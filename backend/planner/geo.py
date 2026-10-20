@@ -58,32 +58,6 @@ class TimedPath:
         return [a, *inner, b]
 
 
-def build_timed_path(
-    coords: list[LatLon],
-    seg_durations_s: list[float] | None,
-    total_duration_s: float,
-    max_speed_mph: float,
-) -> TimedPath:
-    """Attach truck driving times to a route polyline.
-
-    Segment durations come from the router when it provides one per segment;
-    otherwise the route's total duration is spread evenly by distance. Each
-    segment is then slowed to at most `max_speed_mph` (car profile -> truck).
-    """
-    seg_mi = [haversine_mi(coords[k], coords[k + 1]) for k in range(len(coords) - 1)]
-    total_mi = sum(seg_mi)
-    if not seg_durations_s or len(seg_durations_s) != len(seg_mi):
-        rate = total_duration_s / total_mi if total_mi else 0.0
-        seg_durations_s = [d * rate for d in seg_mi]
-
-    min_s_per_mi = 3600.0 / max_speed_mph
-    cum_mi, cum_s = [0.0], [0.0]
-    for d, t in zip(seg_mi, seg_durations_s):
-        cum_mi.append(cum_mi[-1] + d)
-        cum_s.append(cum_s[-1] + max(t, d * min_s_per_mi))
-    return TimedPath(coords, cum_mi, cum_s)
-
-
 # --- Hours of service --------------------------------------------------------
 # Simplified FMCSA property-carrying rules: a 30-minute break once 8 hours have
 # been driven since the last break, and a 10-hour off-duty rest after 11 hours

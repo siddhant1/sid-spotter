@@ -11,6 +11,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 REPO_DIR = BASE_DIR.parent
 
 
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env support (KEY=value lines); real env vars take precedence."""
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        key, sep, value = line.strip().partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+_load_dotenv(BASE_DIR / ".env")
+
+
 def env_bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, str(default)).lower() in {"1", "true", "yes", "on"}
 
@@ -92,18 +105,23 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": os.environ.get("LOG_LEVEL", "INFO")},
 }
 
-# --- Upstream services (all free / keyless by default) ---------------------
-OSRM_URL = os.environ.get("OSRM_URL", "https://router.project-osrm.org")
+# --- Upstream services ---------------------
 PHOTON_URL = os.environ.get("PHOTON_URL", "https://photon.komoot.io")
 NOMINATIM_URL = os.environ.get("NOMINATIM_URL", "https://nominatim.openstreetmap.org")
 OPEN_METEO_URL = os.environ.get("OPEN_METEO_URL", "https://api.open-meteo.com/v1/forecast")
 OPEN_METEO_API_KEY = os.environ.get("OPEN_METEO_API_KEY", "")
+TOMTOM_URL = os.environ.get("TOMTOM_URL", "https://api.tomtom.com")
+TOMTOM_API_KEY = os.environ.get("TOMTOM_API_KEY", "")  # required: truck routing
 HTTP_USER_AGENT = os.environ.get("HTTP_USER_AGENT", "SafeRoutePlanner/1.0 (truck weather routing demo)")
 
 # --- Planning model ---------------------------------------------------------
-# OSRM's public server only has a car profile. Trucks are slower on fast roads,
-# so each segment is capped at this speed when estimating arrival times.
+# Truck sent to TomTom. Max speed caps its truck speed model (vehicleMaxSpeed).
 TRUCK_MAX_SPEED_MPH = float(os.environ.get("TRUCK_MAX_SPEED_MPH", "65"))
+# Truck sent to TomTom: gross weight = empty tractor + 53' trailer + the user's load.
+TRUCK_TARE_LB = float(os.environ.get("TRUCK_TARE_LB", "35000"))
+TRUCK_HEIGHT_FT = float(os.environ.get("TRUCK_HEIGHT_FT", "13.5"))
+TRUCK_LENGTH_FT = float(os.environ.get("TRUCK_LENGTH_FT", "72"))
+TRUCK_WIDTH_FT = float(os.environ.get("TRUCK_WIDTH_FT", "8.5"))
 MAX_DEPARTURE_DAYS_AHEAD = 7
 
 if not DEBUG:

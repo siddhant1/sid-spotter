@@ -1,7 +1,10 @@
-"""Route options from OSRM.
+"""Route options from TomTom truck routing.
 
-OSRM's `alternatives` often returns fewer than three routes. When it does, we
-ask for extra routes forced through a via point offset to either side of the
+TomTom routes for the actual truck: weight and size restrictions, truck
+speed profiles and traffic at the departure time (see `tomtom.py`).
+
+It can return fewer than three routes. When it does, we ask for extra
+routes forced through a via point offset to either side of the
 origin-destination line, and keep the ones that are genuinely different
 (little overlap with routes we already have, no U-turn spur at the via
 point, and not absurdly slower than the fastest route).
@@ -11,13 +14,14 @@ from __future__ import annotations
 
 import logging
 import math
-import re
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
-import requests
 from django.conf import settings
 
-from ..geo import LatLon, PointIndex, TimedPath, build_timed_path, haversine_mi, resample
+from ..geo import LatLon, PointIndex, TimedPath, haversine_mi, resample
+from . import tomtom
 
 log = logging.getLogger(__name__)
 
@@ -34,48 +38,9 @@ class RoutingError(Exception):
 @dataclass
 class RouteOption:
     path: TimedPath
-    osrm_duration_s: float
+    provider_duration_s: float
     summary: str  # major roads, e.g. "I 55, I 70"
-    source: str  # "osrm" | "via"
-
-
-def _osrm_route(points: list[LatLon], alternatives: int = 0) -> list[dict]:
-    coord_str = ";".join(f"{lon:.6f},{lat:.6f}" for lat, lon in points)
-    params = {
-        "overview": "full",
-        "geometries": "geojson",
-        "annotations": "duration",
-        "steps": "true",  # needed for the leg summary (major road names)
-        "alternatives": str(alternatives) if alternatives else "false",
-    }
-    try:
-        resp = requests.get(
-            f"{settings.OSRM_URL}/route/v1/driving/{coord_str}",
-            params=params,
-            timeout=20,
-            headers={"User-Agent": settings.HTTP_USER_AGENT},
-        )
-    except requests.RequestException as exc:
-        raise RoutingError(f"Routing service unreachable: {exc}") from exc
-    data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-    if data.get("code") == "NoRoute":
-        return []
-    if resp.status_code != 200 or data.get("code") != "Ok":
-        raise RoutingError(data.get("message") or f"Routing service error (HTTP {resp.status_code})")
-    return data["routes"]
-
-
-def _to_option(route: dict, source: str) -> RouteOption:
-    coords = [(lat, lon) for lon, lat in route["geometry"]["coordinates"]]
-    seg_durations: list[float] = []
-    for leg in route["legs"]:
-        seg_durations.extend(leg.get("annotation", {}).get("duration", []))
-    path = build_timed_path(coords, seg_durations, route["duration"], settings.TRUCK_MAX_SPEED_MPH)
-    # OSRM separates road names with "," or ";", and via routes have two legs
-    # that can repeat the same road, so split, dedupe and rejoin.
-    names = (n.strip() for leg in route["legs"] for n in re.split(r"[,;]", leg.get("summary", "")))
-    summary = ", ".join(dict.fromkeys(n for n in names if n))
-    return RouteOption(path, route["duration"], summary, source)
+    source: str  # "alternative" (TomTom's own) | "via" (forced through a via point)
 
 
 def _overlap(candidate: list[LatLon], index: PointIndex) -> float:
@@ -117,40 +82,64 @@ def _via_points(origin: LatLon, dest: LatLon) -> list[LatLon]:
     return vias
 
 
-def get_route_options(origin: LatLon, dest: LatLon) -> tuple[list[RouteOption], list[str]]:
-    """Up to three distinct route options, fastest first, plus warnings."""
+# Turns waypoints into route options: fetch(points, alternatives) -> options.
+Fetch = Callable[[list[LatLon], int], list[RouteOption]]
+
+
+def _tomtom_fetch(truck: tomtom.TruckProfile, departure: datetime) -> Fetch:
+    def fetch(points: list[LatLon], alternatives: int) -> list[RouteOption]:
+        try:
+            routes = tomtom.fetch_routes(points, alternatives, truck, departure)
+        except tomtom.TomTomError as exc:
+            raise RoutingError(str(exc)) from exc
+        return [tomtom.to_option(r) for r in routes]
+
+    return fetch
+
+
+def get_route_options(
+    origin: LatLon, dest: LatLon, load_lb: float, departure: datetime
+) -> tuple[list[RouteOption], list[str], dict]:
+    """Up to three distinct truck routes (fastest first), warnings, and the truck used."""
+    if not settings.TOMTOM_API_KEY:
+        raise RoutingError("Truck routing isn't configured: set the TOMTOM_API_KEY environment variable.")
+    truck = tomtom.truck_for_load(load_lb)
+    kept = _collect(origin, dest, _tomtom_fetch(truck, departure))
+
     warnings: list[str] = []
-    routes = _osrm_route([origin, dest], alternatives=WANTED_ROUTES)
-    if not routes:
-        raise RoutingError("No drivable route found between these locations.")
-
-    options = [_to_option(r, "osrm") for r in routes]
-    kept: list[RouteOption] = []
-    for opt in options:
-        if _is_distinct(opt, kept, fastest_s=options[0].path.total_drive_s):
-            kept.append(opt)
-
-    if len(kept) < WANTED_ROUTES:
-        for via in _via_points(origin, dest):
-            if len(kept) >= WANTED_ROUTES:
-                break
-            try:
-                via_routes = _osrm_route([origin, via, dest])
-            except RoutingError as exc:
-                log.warning("via route failed: %s", exc)
-                continue
-            if not via_routes:
-                continue
-            opt = _to_option(via_routes[0], "via")
-            if _is_distinct(opt, kept, fastest_s=kept[0].path.total_drive_s) and not _has_spur(opt.path):
-                kept.append(opt)
-
     if len(kept) < WANTED_ROUTES:
         warnings.append(
             f"Only {len(kept)} distinct route{'s' if len(kept) != 1 else ''} could be found for this trip."
         )
     kept.sort(key=lambda o: o.path.total_drive_s)
-    return kept, warnings
+    return kept, warnings, {"name": "TomTom truck", "truck": truck.as_dict()}
+
+
+def _collect(origin: LatLon, dest: LatLon, fetch: Fetch) -> list[RouteOption]:
+    options = fetch([origin, dest], WANTED_ROUTES - 1)
+    if not options:
+        raise RoutingError("No drivable route found between these locations.")
+
+    kept: list[RouteOption] = []
+    for opt in options:
+        if _is_distinct(opt, kept, fastest_s=options[0].path.total_drive_s):
+            kept.append(opt)
+
+    for via in _via_points(origin, dest):
+        if len(kept) >= WANTED_ROUTES:
+            break
+        try:
+            via_options = fetch([origin, via, dest], 0)
+        except RoutingError as exc:
+            log.warning("via route failed: %s", exc)
+            continue
+        if not via_options:
+            continue
+        opt = via_options[0]
+        opt.source = "via"
+        if _is_distinct(opt, kept, fastest_s=kept[0].path.total_drive_s) and not _has_spur(opt.path):
+            kept.append(opt)
+    return kept
 
 
 def _is_distinct(opt: RouteOption, kept: list[RouteOption], fastest_s: float) -> bool:

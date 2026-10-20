@@ -8,7 +8,7 @@ A React + Django app that helps a truck driver pick the safest route. You enter 
 
 ## Features
 
-- **3 route options.** OSRM alternatives, topped up with via-point detours when OSRM returns fewer than three. Near-duplicates, U-turn spurs and routes over 1.6× the fastest time are rejected.
+- **3 truck route options** from TomTom truck routing. The truck's gross weight and dimensions are sent, so routes avoid roads it isn't allowed on. Travel times come from truck speed models and expected traffic at departure. When TomTom returns fewer than three, via-point detours top them up; near-duplicates, U-turn spurs and routes over 1.6× the fastest time are rejected.
 - **Checkpoints every 10 / 25 / 50 mi**, each with its own ETA. ETAs use truck speeds and can include hours-of-service breaks.
 - **Risk at every checkpoint** from wind, rain and snow, with load rules applied. The UI shows which rule fired.
 - **Recommendation with reasons**, e.g. *"Beats Route A on No Travel miles: 0 vs 75."*
@@ -21,12 +21,12 @@ A React + Django app that helps a truck driver pick the safest route. You enter 
 All the logic lives in small, pure, tested modules under [`backend/planner/`](backend/planner).
 
 ### 1. Routes ([`services/routing.py`](backend/planner/services/routing.py))
-- OSRM's `/route` with `alternatives=3`, full geometry and per-segment durations.
+- TomTom `calculateRoute` with `travelMode=truck`, `maxAlternatives=2`, `departAt` (traffic expected at departure) and `extendedRouteRepresentation=travelTime`. That last one gives TomTom's own cumulative truck travel time along the polyline, which the checkpoint ETAs use.
+- **The truck sent to TomTom:** gross weight is 35,000 lb (empty tractor and 53′ trailer) plus the entered load, at 13′6″ tall, 72 ft long and 8′6″ wide, capped at 65 mph. All of these can be set with `TRUCK_*` env vars. The brief's load rules use the entered **load**; TomTom's road restrictions use the **gross** weight.
 - If fewer than 3 distinct routes come back, the app tries via points offset perpendicular to the origin→destination line (±15%, ±30%, …). A candidate is kept only if:
   - under 75% of its length overlaps an existing route (1 mi radius);
   - it has no U-turn spur at the via point;
   - its drive time is at most 1.6× the fastest.
-- **Truck speed:** the public OSRM server only has a car profile, so each segment is capped at 65 mph (`TRUCK_MAX_SPEED_MPH`).
 
 ### 2. Checkpoints and ETAs ([`planning.py`](backend/planner/planning.py), [`geo.py`](backend/planner/geo.py))
 - Checkpoints are the origin, every *N* miles, and the destination. Positions and driving times are interpolated along the polyline.
@@ -83,7 +83,7 @@ backend/                    Django 5.2 + DRF
     geo.py                  polyline math, HOS clock, simplification
     planning.py             orchestrates routes → checkpoints → weather → risk
     heatmap.py              corridor grid + 49 hourly frames
-    services/               OSRM, Open-Meteo, Photon clients; storm demo
+    services/               TomTom truck routing, Open-Meteo, Photon clients; storm demo
     tests/                  64 tests (rules, ranking, ETAs, API validation)
 frontend/                   Vite + React 19 + TypeScript + react-leaflet
   src/components/           MapView, PlanForm, PlaceInput, Results, TimeBar
@@ -114,7 +114,7 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd frontend && npm install && npm run dev
 ```
 
-Then open http://localhost:5173. No API keys are needed.
+Then open http://localhost:5173. Truck routing needs a free TomTom key: copy `backend/.env.example` to `backend/.env` and set `TOMTOM_API_KEY`. Weather and geocoding need no keys.
 
 ```bash
 cd backend && .venv/bin/pytest          # 64 unit tests: rules, ranking, ETAs, HOS, API validation
@@ -140,14 +140,15 @@ The `Dockerfile` builds the React app, then serves it and the API from one gunic
 |---|---|---|
 | `DJANGO_SECRET_KEY` | dev key | set in production |
 | `DJANGO_ALLOWED_HOSTS` | `*` | comma-separated |
-| `TRUCK_MAX_SPEED_MPH` | 65 | truck speed cap |
-| `OSRM_URL` | public demo server | self-hosted OSRM for heavier use |
+| `TRUCK_MAX_SPEED_MPH` | 65 | truck max speed sent to TomTom |
+| `TOMTOM_API_KEY` | **required** | truck routing ([free key](https://developer.tomtom.com), 2,500 requests/day) |
+| `TRUCK_TARE_LB` / `TRUCK_HEIGHT_FT` / `TRUCK_LENGTH_FT` / `TRUCK_WIDTH_FT` | 35000 / 13.5 / 72 / 8.5 | truck sent to TomTom |
 | `OPEN_METEO_API_KEY` | none | commercial Open-Meteo tier |
 
 ## Limitations and next steps
 
-- **Routing is car-profile.** The public OSRM server has no truck restrictions (height, weight, hazmat). Swapping in OpenRouteService `driving-hgv` or HERE Truck behind `get_route_options()` would fix that without touching anything downstream.
-- **Free-tier quotas.** Open-Meteo's free tier allows ~600 location-calls per minute (and 10k/day). One trip costs roughly 300–600 (checkpoints plus the ≤260-cell heatmap), so planning several trips within a minute can hit the cap. The app then waits for the next minute window, retries once, and shows a clear message if the limit is still hit. Results are cached for 30 min. Set `OPEN_METEO_API_KEY` for real traffic. The public OSRM and Photon servers are also demo-grade; geocoding retries and falls back to Nominatim.
+- **Hazmat** classes and axle weights aren't collected yet. TomTom supports both (`vehicleLoadType`, `vehicleAxleWeight`), so adding them is a form field away.
+- **Free-tier quotas.** Open-Meteo's free tier allows ~600 location-calls per minute (and 10k/day). One trip costs roughly 300–600 (checkpoints plus the ≤260-cell heatmap), so planning several trips within a minute can hit the cap. The app then waits for the next minute window, retries once, and shows a clear message if the limit is still hit. Results are cached for 30 min. Set `OPEN_METEO_API_KEY` for real traffic. TomTom's free tier is 2,500 requests/day; one trip uses 1–5 calls. The public Photon geocoder is demo-grade, so geocoding retries and falls back to Nominatim.
 - Times are shown in the browser's time zone.
 - Forecast resolution is that of the underlying models (≈3–13 km), so very local effects such as mountain passes and lake-effect bands may be underestimated.
 

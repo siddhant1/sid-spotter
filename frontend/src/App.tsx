@@ -135,7 +135,7 @@ function Intro() {
     <section className="intro">
       <h3>How it works</h3>
       <ol>
-        <li>Three route options come from OSRM, with extra alternatives forced through detours where needed.</li>
+        <li>Three truck routes come from TomTom. They avoid roads the truck's weight and size aren't allowed on, use truck speeds and expect traffic at your departure time.</li>
         <li>Each route is sampled every 10, 25 or 50 miles. The forecast at each checkpoint is read at the time the truck gets there.</li>
         <li>Wind, rain and snow are classified with the risk table. Load rules then raise wind risk for heavy trucks.</li>
         <li>

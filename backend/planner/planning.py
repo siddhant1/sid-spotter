@@ -53,7 +53,7 @@ def _elapsed(drive_s: float, hos: bool) -> float:
 
 
 def plan_trip(req: TripRequest) -> dict:
-    options, warnings = routing.get_route_options(req.origin, req.destination)
+    options, warnings, provider = routing.get_route_options(req.origin, req.destination, req.load_lb, req.departure)
 
     # Lay out checkpoints first so every route's weather comes from one batch.
     layouts = []
@@ -104,6 +104,7 @@ def plan_trip(req: TripRequest) -> dict:
             "simulate_storm": req.simulate_storm,
         },
         "storm": storm.as_dict() if storm else None,
+        "provider": provider,
         "routes": routes,
         "recommendation": rec.as_dict(),
         "warnings": warnings,

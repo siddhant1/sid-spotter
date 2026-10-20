@@ -32,7 +32,7 @@ export default function MapView(props: Props) {
     <MapContainer center={US_CENTER} zoom={4} maxZoom={16} preferCanvas zoomControl={false} className="map">
       <TileLayer
         url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-        attribution='Tiles &copy; Esri · Weather: <a href="https://open-meteo.com">Open-Meteo</a> · Routing: <a href="https://project-osrm.org">OSRM</a> · <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        attribution='Tiles &copy; Esri · Weather: <a href="https://open-meteo.com">Open-Meteo</a> · Routing: <a href="https://www.tomtom.com">TomTom</a> · <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         maxZoom={16}
       />
       <Pane name="heat" style={{ zIndex: 320 }} />

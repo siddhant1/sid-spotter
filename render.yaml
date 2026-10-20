@@ -10,3 +10,5 @@ services:
         generateValue: true
       - key: DJANGO_DEBUG
         value: "false"
+      - key: TOMTOM_API_KEY
+        sync: false  # Render asks for this secret when you create the Blueprint

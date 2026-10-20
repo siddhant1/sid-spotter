@@ -25,6 +25,10 @@ export default function Results({ plan, selectedId, onSelect, onFocusCheckpoint 
         <p className="rec-stats">
           {miles(best.distance_mi)} · {duration(best.elapsed_s)} · arrives {clock(best.arrival)}
         </p>
+        <p className="rec-truck">
+          {plan.provider.name} routing · {Math.round(plan.provider.truck.gross_lb).toLocaleString()} lb gross ·{' '}
+          {feetInches(plan.provider.truck.height_ft)} tall · {plan.provider.truck.length_ft} ft long
+        </p>
         {rec.advisory && <p className="rec-advisory">{rec.advisory}</p>}
         {rec.reasons.length > 0 && (
           <ul className="rec-reasons">
@@ -98,6 +102,11 @@ export default function Results({ plan, selectedId, onSelect, onFocusCheckpoint 
       </section>
     </div>
   )
+}
+
+function feetInches(ft: number): string {
+  const inches = Math.round(ft * 12)
+  return `${Math.floor(inches / 12)}′${inches % 12}″`
 }
 
 function RouteCard({ route, selected, onSelect }: { route: Route; selected: boolean; onSelect: () => void }) {

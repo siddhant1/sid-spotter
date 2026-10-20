@@ -26,7 +26,7 @@ def _error(message: str, code=status.HTTP_502_BAD_GATEWAY) -> Response:
 
 @api_view(["GET"])
 def health(request):
-    return Response({"ok": True})
+    return Response({"ok": True, "truck_routing": bool(settings.TOMTOM_API_KEY)})
 
 
 @api_view(["GET"])

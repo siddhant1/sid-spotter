@@ -44,7 +44,7 @@ export interface Route {
   id: string
   name: string
   via: string
-  source: 'osrm' | 'via'
+  source: 'alternative' | 'via'
   distance_mi: number
   drive_s: number
   elapsed_s: number
@@ -85,6 +85,15 @@ export interface PlanResponse {
   warnings: string[]
   corridor: [number, number][]
   storm: Storm | null
+  provider: { name: string; truck: Truck }
+}
+
+export interface Truck {
+  gross_lb: number
+  height_ft: number
+  length_ft: number
+  width_ft: number
+  max_speed_mph: number
 }
 
 export interface Storm {

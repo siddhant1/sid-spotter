@@ -4,12 +4,20 @@ from unittest.mock import patch
 import pytest
 
 from planner import planning
-from planner.geo import build_timed_path, elapsed_with_hos, haversine_mi, simplify
+from planner.geo import TimedPath, elapsed_with_hos, haversine_mi, simplify
 from planner.planning import TripRequest, checkpoint_miles, ownership, plan_trip
 from planner.services.routing import RouteOption
 from planner.services.weather import Series
 
 H = 3600
+
+
+def straight_path(coords, total_s):
+    """TimedPath at constant speed (stand-in for a TomTom route)."""
+    cum_mi = [0.0]
+    for a, b in zip(coords, coords[1:]):
+        cum_mi.append(cum_mi[-1] + haversine_mi(a, b))
+    return TimedPath(coords, cum_mi, [total_s * m / cum_mi[-1] for m in cum_mi])
 
 
 class TestCheckpoints:
@@ -43,15 +51,8 @@ class TestHoursOfService:
 
 
 class TestTimedPath:
-    def test_speed_cap_slows_fast_segments(self):
-        coords = [(40.0, -90.0), (41.0, -90.0)]  # ~69 mi
-        miles = haversine_mi(*coords)
-        path = build_timed_path(coords, [miles / 80 * H], miles / 80 * H, max_speed_mph=65)
-        assert path.total_drive_s == pytest.approx(miles / 65 * H)
-
     def test_locate_interpolates(self):
-        coords = [(40.0, -90.0), (41.0, -90.0)]
-        path = build_timed_path(coords, None, 2 * H, max_speed_mph=200)
+        path = straight_path([(40.0, -90.0), (41.0, -90.0)], 2 * H)
         pos, t = path.locate(path.total_mi / 2)
         assert pos == pytest.approx((40.5, -90.0))
         assert t == pytest.approx(H)
@@ -81,8 +82,8 @@ def test_plan_trip_scores_checkpoints_at_their_eta():
     """A storm arriving 2h after departure only hits checkpoints reached after it."""
     departure = datetime(2026, 1, 1, 12, tzinfo=timezone.utc)
     coords = [(40.0, -90.0), (42.0, -90.0)]  # ~138 mi straight north
-    path = build_timed_path(coords, None, 138 / 46 * H, max_speed_mph=65)  # ~3h
-    option = RouteOption(path=path, osrm_duration_s=path.total_drive_s, summary="US 51", source="osrm")
+    path = straight_path(coords, 3 * H)
+    option = RouteOption(path=path, provider_duration_s=path.total_drive_s, summary="US 51", source="alternative")
     start = int(departure.timestamp())
 
     def fake_forecasts(cells, start_dt, hours):
@@ -91,7 +92,7 @@ def test_plan_trip_scores_checkpoints_at_their_eta():
 
     req = TripRequest((40, -90), (42, -90), "A", "B", departure, load_lb=35_000, interval_mi=25, hos=False)
     with (
-        patch.object(planning.routing, "get_route_options", return_value=([option], [])),
+        patch.object(planning.routing, "get_route_options", return_value=([option], [], {"name": "test"})),
         patch.object(planning.weather, "get_forecasts", side_effect=fake_forecasts),
     ):
         result = plan_trip(req)
