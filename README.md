@@ -84,10 +84,11 @@ backend/                    Django 5.2 + DRF
     planning.py             orchestrates routes → checkpoints → weather → risk
     heatmap.py              corridor grid + 49 hourly frames
     services/               OSRM, Open-Meteo, Photon clients; storm demo
-    tests/                  63 tests (rules, ranking, ETAs, API validation)
+    tests/                  64 tests (rules, ranking, ETAs, API validation)
 frontend/                   Vite + React 19 + TypeScript + react-leaflet
   src/components/           MapView, PlanForm, PlaceInput, Results, TimeBar
   src/heatmap.ts            canvas heatmap renderer
+scripts/e2e_check.py        black-box check against the brief
 Dockerfile, render.yaml     single-service deploy
 ```
 
@@ -116,8 +117,20 @@ cd frontend && npm install && npm run dev
 Then open http://localhost:5173. No API keys are needed.
 
 ```bash
-cd backend && .venv/bin/pytest
+cd backend && .venv/bin/pytest          # 64 unit tests: rules, ranking, ETAs, HOS, API validation
+python3 scripts/e2e_check.py http://localhost:8000   # black-box check of a running app against the brief
 ```
+
+`scripts/e2e_check.py` reimplements the risk table and the ranking independently, then runs 4 real trips (all three intervals, loads from 29k to 80k lb, HOS on and off). It checks the following, ~257 checks in all:
+- 3 distinct routes per trip;
+- checkpoint spacing;
+- ETAs, truck speed and HOS breaks;
+- that each sampled checkpoint's weather equals Open-Meteo queried directly at that ETA;
+- that every checkpoint's and heatmap cell's level matches the brief's rules;
+- that miles by level add up to the route length;
+- that the recommended route is not beaten on any criterion;
+- the heatmap's 0–48 h frames;
+- input validation.
 
 ## Deploying
 
@@ -134,7 +147,7 @@ The `Dockerfile` builds the React app, then serves it and the API from one gunic
 ## Limitations and next steps
 
 - **Routing is car-profile.** The public OSRM server has no truck restrictions (height, weight, hazmat). Swapping in OpenRouteService `driving-hgv` or HERE Truck behind `get_route_options()` would fix that without touching anything downstream.
-- The public OSRM and Open-Meteo free tiers are rate-limited, which is fine for a demo. Use your own OSRM / an API key for production.
+- **Free-tier quotas.** Open-Meteo's free tier allows ~600 location-calls per minute (and 10k/day). One trip costs roughly 300–600 (checkpoints plus the ≤260-cell heatmap), so planning several trips within a minute can hit the cap. The app then waits for the next minute window, retries once, and shows a clear message if the limit is still hit. Results are cached for 30 min. Set `OPEN_METEO_API_KEY` for real traffic. The public OSRM and Photon servers are also demo-grade; geocoding retries and falls back to Nominatim.
 - Times are shown in the browser's time zone.
 - Forecast resolution is that of the underlying models (≈3–13 km), so very local effects such as mountain passes and lake-effect bands may be underestimated.
 

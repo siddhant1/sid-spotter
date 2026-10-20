@@ -95,6 +95,7 @@ LOGGING = {
 # --- Upstream services (all free / keyless by default) ---------------------
 OSRM_URL = os.environ.get("OSRM_URL", "https://router.project-osrm.org")
 PHOTON_URL = os.environ.get("PHOTON_URL", "https://photon.komoot.io")
+NOMINATIM_URL = os.environ.get("NOMINATIM_URL", "https://nominatim.openstreetmap.org")
 OPEN_METEO_URL = os.environ.get("OPEN_METEO_URL", "https://api.open-meteo.com/v1/forecast")
 OPEN_METEO_API_KEY = os.environ.get("OPEN_METEO_API_KEY", "")
 HTTP_USER_AGENT = os.environ.get("HTTP_USER_AGENT", "SafeRoutePlanner/1.0 (truck weather routing demo)")

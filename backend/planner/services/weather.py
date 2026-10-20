@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -34,7 +35,16 @@ BATCH_SIZE = 100
 VARIABLES = ("wind_speed_10m", "wind_gusts_10m", "rain", "snowfall")
 
 
+# The free tier allows ~600 location-calls per minute. On a 429 we wait for the
+# next minute window (at most this long) and retry once.
+RATE_LIMIT_WAIT_MAX_S = 25
+
+
 class WeatherError(Exception):
+    pass
+
+
+class RateLimited(WeatherError):
     pass
 
 
@@ -112,6 +122,8 @@ def _fetch_batch(cells: list[LatLon], start: datetime, hours: int) -> list[Serie
         )
     except requests.RequestException as exc:
         raise WeatherError(f"Weather service unreachable: {exc}") from exc
+    if resp.status_code == 429:
+        raise RateLimited("The free weather service is at its per-minute limit. Try again in a minute.")
     if resp.status_code != 200:
         try:
             reason = resp.json().get("reason")
@@ -142,6 +154,18 @@ def _fetch_batch(cells: list[LatLon], start: datetime, hours: int) -> list[Serie
     return out
 
 
+def _fetch_with_retry(cells: list[LatLon], start: datetime, hours: int) -> list[Series]:
+    try:
+        return _fetch_batch(cells, start, hours)
+    except RateLimited:
+        wait = 61 - time.time() % 60  # just past the next minute boundary
+        if wait > RATE_LIMIT_WAIT_MAX_S:
+            raise
+        log.warning("open-meteo rate limited; retrying in %.0fs", wait)
+        time.sleep(wait)
+        return _fetch_batch(cells, start, hours)
+
+
 def get_forecasts(cells: list[LatLon], start: datetime, hours: int) -> dict[LatLon, Series]:
     """Hourly series for each cell, covering [start, start + hours)."""
     start = floor_hour(start)
@@ -160,7 +184,7 @@ def get_forecasts(cells: list[LatLon], start: datetime, hours: int) -> dict[LatL
     if batches:
         log.info("open-meteo: %d cells cached, fetching %d in %d batches", len(result), len(missing), len(batches))
         with ThreadPoolExecutor(max_workers=4) as pool:
-            for batch, series in zip(batches, pool.map(lambda b: _fetch_batch(b, start, hours), batches)):
+            for batch, series in zip(batches, pool.map(lambda b: _fetch_with_retry(b, start, hours), batches)):
                 fresh = dict(zip(batch, series))
                 result.update(fresh)
                 cache.set_many({_cache_key(c, start, hours): s for c, s in fresh.items()})

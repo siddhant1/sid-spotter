@@ -17,9 +17,15 @@ export default function PlaceInput({ label, value, onChange, placeholder }: Prop
   const [loading, setLoading] = useState(false)
   const listId = useId()
   const typed = useRef(false)
+  const clearedByTyping = useRef(false)
 
-  // Keep the text in sync when the parent sets the place (swap, examples).
+  // Keep the text in sync when the parent sets the place (swap, examples),
+  // but not when the place was cleared because the user started typing.
   useEffect(() => {
+    if (value == null && clearedByTyping.current) {
+      clearedByTyping.current = false
+      return
+    }
     typed.current = false
     setText(value?.label ?? '')
   }, [value])
@@ -67,7 +73,10 @@ export default function PlaceInput({ label, value, onChange, placeholder }: Prop
           onChange={(e) => {
             typed.current = true
             setText(e.target.value)
-            if (value) onChange(null)
+            if (value) {
+              clearedByTyping.current = true
+              onChange(null)
+            }
           }}
           onFocus={() => results.length && setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}

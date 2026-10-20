@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from dataclasses import dataclass
 
 import requests
@@ -70,9 +71,10 @@ def _to_option(route: dict, source: str) -> RouteOption:
     for leg in route["legs"]:
         seg_durations.extend(leg.get("annotation", {}).get("duration", []))
     path = build_timed_path(coords, seg_durations, route["duration"], settings.TRUCK_MAX_SPEED_MPH)
-    summary = ", ".join(s for s in (leg.get("summary", "") for leg in route["legs"]) if s)
-    # Via routes have two legs whose summaries can repeat the same road.
-    summary = ", ".join(dict.fromkeys(p.strip() for p in summary.split(",") if p.strip()))
+    # OSRM separates road names with "," or ";", and via routes have two legs
+    # that can repeat the same road, so split, dedupe and rejoin.
+    names = (n.strip() for leg in route["legs"] for n in re.split(r"[,;]", leg.get("summary", "")))
+    summary = ", ".join(dict.fromkeys(n for n in names if n))
     return RouteOption(path, route["duration"], summary, source)
 
 

@@ -107,3 +107,24 @@ def test_plan_trip_scores_checkpoints_at_their_eta():
     assert sum(route["miles_by_level"]) == pytest.approx(route["distance_mi"], abs=0.2)
     assert route["miles_by_level"][4] > 0
     assert result["recommendation"]["safe"] is False
+
+
+def test_weather_retries_once_after_rate_limit():
+    from planner.services import weather as w
+
+    ok = [Series(0, [1.0], [1.0], [0.0], [0.0])]
+    calls = []
+
+    def fake_fetch(cells, start, hours):
+        calls.append(1)
+        if len(calls) == 1:
+            raise w.RateLimited("limit")
+        return ok
+
+    with (
+        patch.object(w, "_fetch_batch", side_effect=fake_fetch),
+        patch.object(w.time, "time", return_value=50.0),  # 11 s to the next minute
+        patch.object(w.time, "sleep") as sleep,
+    ):
+        assert w._fetch_with_retry([(0.0, 0.0)], datetime.now(timezone.utc), 1) == ok
+    assert len(calls) == 2 and sleep.call_args[0][0] == pytest.approx(11)

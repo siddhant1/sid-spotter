@@ -15,9 +15,9 @@ from .risk import assess
 from .services import scenario, weather
 
 HOURS = 49  # 0..48 inclusive
-TARGET_CELLS_ACROSS = 30
+TARGET_CELLS_ACROSS = 26
 MIN_STEP_DEG = 0.15
-MAX_CELLS = 450
+MAX_CELLS = 260  # bounded by the weather API's free-tier per-minute quota
 
 
 def build_grid(corridor: list[LatLon]) -> dict:

@@ -16,4 +16,4 @@ COPY backend/ ./
 COPY --from=web /web/dist /app/frontend/dist
 RUN python manage.py collectstatic --noinput
 EXPOSE 8000
-CMD gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 90
+CMD ["sh", "-c", "exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 90"]
